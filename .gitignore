@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+.vercel
+.env*.local
+__pycache__/
+*.pyc
+.pytest_cache
+.venv
+next-env.d.ts
+*.tsbuildinfo
+_to_delete/
+
+# separate git repo (deployed to Render)
+backend/
