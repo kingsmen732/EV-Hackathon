@@ -30,7 +30,7 @@ const hi: Partial<Record<Key, string>> = {
   "legend.shared": "कम्युनिटी",
   "legend.nofit": "आपकी गाड़ी के लिए नहीं",
 
-  "drive.hello": "नमस्ते {name}, आप कहाँ से शुरू कर रहे हैं?",
+  "drive.hello": "नमस्ते {name}, चलिए चार्ज करते हैं",
   "drive.intro": "हम आपकी गाड़ी का प्लग, बैटरी की सेहत और चार्जिंग स्पीड को लाइव कतारों से मिलाते हैं, फिर सबसे अच्छा बे आपके लिए रोक लेते हैं।",
   "drive.update": "अपनी यात्रा अपडेट करें",
   "setup.vehicle": "गाड़ी",
@@ -45,7 +45,7 @@ const hi: Partial<Record<Key, string>> = {
   "setup.tapMap": "सेट करने के लिए मैप पर टैप करें",
   "setup.go": "आगे बढ़ें",
   "setup.updateTarget": "टारगेट अपडेट करें",
-  "setup.outside": "आप सेवा क्षेत्र से बाहर हैं — कोई जगह खोजें या मैप पर टैप करें।",
+  "setup.outside": "ChargeMesh पूरे भारत में काम करता है — यह डिवाइस भारत से बाहर है।",
   "setup.denied": "लोकेशन की अनुमति नहीं मिली।",
   "setup.noGps": "इस डिवाइस पर लोकेशन उपलब्ध नहीं है।",
   "setup.range": "~{km} किमी रेंज",
@@ -281,5 +281,9 @@ const hi: Partial<Record<Key, string>> = {
   "ask.notFound": "“{q}” नहीं मिला",
   "ask.ranOn": "{engine} · {ms} ms",
   "ask.local": "आपके डिवाइस पर चलता है",
+  "gps.retry": "फिर कोशिश करें",
+  "gps.demo": "डेमो लोकेशन — यह डिवाइस भारत से बाहर है।",
+  "trip.multi": "लगभग {n} में से पहला स्टॉप — यहाँ पूरा चार्ज करें, फिर यहीं से अगला स्टॉप प्लान करें।",
+  "trip.needMany": "यह यात्रा एक चार्ज से लंबी है — एक से ज़्यादा चार्जिंग स्टॉप लगेंगे।",
 };
 export default hi;

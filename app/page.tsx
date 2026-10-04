@@ -29,6 +29,8 @@ const PREFS: { id: string; k: Key; icon: React.ElementType }[] = [
 ];
 const FLEX = [0, 30, 60, 120, 180];
 const ACTIVE = ["scheduled", "en_route", "queued", "charging"];
+const DEMO_START = (() => { const [a, b] = (process.env.NEXT_PUBLIC_GPS_FALLBACK ?? "").split(",").map(Number); return a && b ? { lat: a, lon: b } : null; })();
+const far = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => Math.hypot((a.lat - b.lat) * 111, (a.lon - b.lon) * 108) > 0.15; // km
 type Place = { lat: number; lon: number; label: string };
 const line = (a: { lat: number; lon: number }, b: { lat: number; lon: number }): [number, number][] => [[a.lat, a.lon], [b.lat, b.lon]];
 
@@ -106,14 +108,27 @@ export default function DrivePage() {
     if (u) { setUser(u); setVid(null); setMe(null); setResult(null); setEditing(true); }
   }
 
+  /** Move the trip start to where the device is now (the driver may have moved since setup). */
+  async function syncStart(id: string | null): Promise<string | null> {
+    if (!id || !me || !gpsIn || !far(gpsIn, me)) return id;
+    const d = await run(() => api<Driver>("/drive/start", { method: "POST", json: {
+      soc: Math.max(1, Math.round(me.soc)), target_soc: me.target_soc, lat: gpsIn.lat, lon: gpsIn.lon } }));
+    if (!d) return id;
+    setVid(d.id); setMe(d);
+    return d.id;
+  }
+
   async function search(p = pref, f = flex, ps = pass, id = vid) {
+    id = await syncStart(id);
     if (!id) return;
     const r = await run(() => api<MatchResult>("/match", { method: "POST", json: { vehicle_id: id, preference: p, flexible_min: f, priority_pass: ps } }));
     if (r) { setResult(r); setPlan(null); setWhy(null); setShowAll(false); setSelected(null); if (r.options[0]) setFocus([r.options[0].lat, r.options[0].lon]); }
   }
 
   async function planTrip(d = dest, p = pref, ps = pass, id = vid) {
-    if (!id || !d) return;
+    if (!d) return;
+    id = await syncStart(id);
+    if (!id) return;
     const r = await run(() => api<TripPlan>("/trip/plan", { method: "POST", json: {
       vehicle_id: id, dest_lat: d.lat, dest_lon: d.lon, dest_label: d.label.slice(0, 120), preference: p, priority_pass: ps } }));
     if (r) { setPlan(r); setResult(null); setWhy(null); setStopSel(0); setShowAll(false); setSelected(null); }
@@ -128,7 +143,7 @@ export default function DrivePage() {
 
   async function findPlace(q: string): Promise<Place | null> {
     try {
-      const at = me ?? { lat: 13.05, lon: 80.22 };
+      const at = me ?? gpsIn ?? { lat: 13.05, lon: 80.22 };
       const r = await api<{ results: Place[] }>(`/geo/search?q=${encodeURIComponent(q)}&lat=${at.lat}&lon=${at.lon}`);
       if (r.results[0]) return r.results[0];
     } catch { /* fall through to the station list */ }
@@ -181,7 +196,7 @@ export default function DrivePage() {
   useEffect(() => {
     if (destQ.trim().length < 3) { setDestHits([]); return; }
     const h = setTimeout(async () => {
-      const at = me ?? { lat: 13.05, lon: 80.22 };
+      const at = me ?? gpsIn ?? { lat: 13.05, lon: 80.22 };
       let hits: Place[] = [];
       try { hits = (await api<{ results: Place[] }>(`/geo/search?q=${encodeURIComponent(destQ)}&lat=${at.lat}&lon=${at.lon}`)).results; } catch { /* offline: local only */ }
       const local = (net?.stations ?? []).filter((s) => s.kind === "public" && `${s.area} ${s.name}`.toLowerCase().includes(destQ.toLowerCase()))
@@ -192,7 +207,13 @@ export default function DrivePage() {
   }, [destQ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // live GPS
-  const gpsIn = geo.fix && geo.inArea ? { lat: geo.fix.lat, lon: geo.fix.lon } : null;
+  // The start is always the device's location. NEXT_PUBLIC_GPS_FALLBACK="lat,lon" is a demo-only
+  // stand-in used when the device is outside the service area or has no location.
+  const live = geo.fix && geo.inArea ? { lat: geo.fix.lat, lon: geo.fix.lon } : null;
+  const demoStart = !live && DEMO_START && ["on", "denied", "unavailable", "insecure"].includes(geo.status);
+  const gpsIn = live ?? (demoStart ? DEMO_START : null);
+  const [centred, setCentred] = useState(false);
+  useEffect(() => { if (!centred && gpsIn) { setFocus([gpsIn.lat, gpsIn.lon]); setCentred(true); } }, [centred, gpsIn?.lat]); // eslint-disable-line react-hooks/exhaustive-deps
   function locate() { geo.start(); if (geo.fix) setFocus([geo.fix.lat, geo.fix.lon]); else setWantFocus(true); }
   useEffect(() => {
     if (wantFocus && geo.fix) { setFocus([geo.fix.lat, geo.fix.lon]); setWantFocus(false); }
@@ -211,9 +232,10 @@ export default function DrivePage() {
   const compatible = useMemo(() => {
     if (!net || !gv) return null;
     const conns = new Set(gv.connectors);
-    return new Set(net.stations.filter((st) => st.chargers.some((c) => conns.has(c.connector) &&
+    const at = me ?? gpsIn;   // only count stations around the driver, not the whole country
+    return new Set(net.stations.filter((st) => (!at || Math.hypot((st.lat - at.lat) * 111, (st.lon - at.lon) * 100) < 60) && st.chargers.some((c) => conns.has(c.connector) &&
       (DC.has(c.connector) ? gv.max_dc_kw > 0 || c.connector === "LECCS" : gv.max_ac_kw > 0))).map((st) => st.id));
-  }, [net, gv]);
+  }, [net, gv, me?.lat, me?.lon, gpsIn?.lat, gpsIn?.lon]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (onward && me && !trip) setOnward(null); }, [onward, me, trip]);
 
   const stops = plan?.stops ?? [];
@@ -251,7 +273,7 @@ export default function DrivePage() {
         <MapView stations={net?.stations ?? []} units={net?.units ?? []} me={mePos} meIsCar={!!trip} legs={legs} fit={!!plan} dest={destPin}
           gps={geo.fix} onLocate={locate} locating={geo.status === "locating"} located={geo.status === "on"} compatible={compatible}
           highlight={(showStops ? stops : opts).map((o) => o.station_id).concat(trip ? [trip.station_id] : [])}
-          selected={selected} onSelect={setSelected} picking={picking || pickDest}
+          selected={selected} onSelect={setSelected} picking={pickDest}
           onPick={(lat, lon) => {
             if (pickDest) { setDest({ lat, lon, label: t("setup.pinned") }); setPickDest(false); setPlan(null); }
             else { setPicked({ lat, lon }); setPicking(false); }
@@ -282,8 +304,8 @@ export default function DrivePage() {
             <section className="card p-4">
               <h1 className="mb-1 text-lg font-semibold">{editing ? t("drive.update") : t("drive.hello", { name: user!.name.split(" ")[0] })}</h1>
               {!editing && <p className="mb-4 text-sm text-slate-400">{t("drive.intro")}</p>}
-              <DriverSetup vehicle={gv!} vehicles={user!.vehicles} onSwitch={switchVehicle} stations={net?.stations ?? []}
-                gpsLoc={gpsIn} onLocate={locate} pickedLoc={picked} picking={picking} onTogglePick={() => setPicking(!picking)} onSubmit={startDrive}
+              <DriverSetup vehicle={gv!} vehicles={user!.vehicles} onSwitch={switchVehicle} 
+                gpsLoc={gpsIn} onLocate={geo.start} geoStatus={geo.status} demo={!!demoStart} onSubmit={startDrive}
                 busy={busy} lockTrip={!!trip} initial={me ? { soc: me.soc, target_soc: me.target_soc, lat: me.lat, lon: me.lon } : null}
                 onCancel={editing && me ? () => { setEditing(false); setPicking(false); } : undefined} />
             </section>
@@ -406,7 +428,7 @@ export default function DrivePage() {
                     <button className="shrink-0 text-xs font-medium text-volt-400 hover:underline" onClick={() => { setPlan(null); setWhy(null); }}>{t("res.newSearch")}</button>
                   </div>
                   <div className={`mt-3 rounded-xl border px-3 py-2 text-xs ${plan.needs_charge ? "border-amp-500/40 bg-amp-500/5 text-amp-400" : "border-volt-500/30 bg-volt-500/5 text-volt-300"}`}>
-                    {plan.needs_charge ? t("trip.needCharge") : t("trip.noCharge")}
+                    {!plan.needs_charge ? t("trip.noCharge") : stops[0]?.more_stops ? t("trip.needMany") : t("trip.needCharge")}
                   </div>
                   {plan.routing === "ola-live" && <span className="chip mt-2 bg-volt-500/15 text-volt-300">{t("res.live")}</span>}
                 </div>
@@ -423,7 +445,8 @@ export default function DrivePage() {
                     <OptionCard o={o} primary={i === 0} busy={busy} onReserve={() => reserve(o)} onHover={(on) => on && setStopSel(i)} />
                     <div className="-mt-2 rounded-b-2xl border border-t-0 border-ink-700 bg-ink-900 px-4 pb-3 pt-4 text-xs text-slate-300">
                       <div className="flex items-center gap-1.5"><Navigation size={12} className="text-sky-400" />{t("trip.onward", { place: plan.dest.label ?? dest?.label ?? "" })} · {o.leg2_km} km · {mins(o.leg2_min)}</div>
-                      <div className="mt-1 text-slate-400">{t("trip.stopHint", { min: mins(Math.max(0, o.detour_min)), pct: Math.round(o.dest_arrive_soc) })} · {t("trip.total", { min: mins(o.trip_min) })}</div>
+                      {o.more_stops ? <div className="mt-1 text-amp-400">{t("trip.multi", { n: o.more_stops + 1 })}</div>
+                        : <div className="mt-1 text-slate-400">{t("trip.stopHint", { min: mins(Math.max(0, o.detour_min)), pct: Math.round(o.dest_arrive_soc) })} · {t("trip.total", { min: mins(o.trip_min) })}</div>}
                       {i === 0 && <WhyBox o={o} why={why} busy={whyBusy} onAsk={() => explainPick(o)} label={t("ask.why")} />}
                     </div>
                   </div>

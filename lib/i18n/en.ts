@@ -31,7 +31,7 @@ const en = {
   "legend.nofit": "Not for your car",
 
   // trip setup
-  "drive.hello": "Hi {name}, where are you starting?",
+  "drive.hello": "Hi {name}, let's get you charged",
   "drive.intro": "We check your car's plug, battery health and charging speed against live queues, then hold the best bay for you.",
   "drive.update": "Update your trip",
   "setup.vehicle": "Vehicle",
@@ -39,14 +39,14 @@ const en = {
   "setup.chargeTo": "Charge up to",
   "setup.slowAbove": "Charging slows above {pct}% for this battery — stopping earlier saves time.",
   "setup.start": "Starting point",
-  "setup.search": "Search a place in Chennai",
+  "setup.search": "Search a place",
   "setup.pinned": "Pinned on the map",
   "setup.gps": "Your current location",
   "setup.default": "Default location",
   "setup.tapMap": "Tap the map to set",
   "setup.go": "Continue",
   "setup.updateTarget": "Update target",
-  "setup.outside": "You're outside the service area — search a place or tap the map.",
+  "setup.outside": "ChargeMesh works across India — this device is outside it.",
   "setup.denied": "Location permission was denied.",
   "setup.noGps": "Location isn't available on this device.",
   "setup.range": "~{km} km range",
@@ -290,6 +290,10 @@ const en = {
   "ask.notFound": "Couldn't find “{q}”",
   "ask.ranOn": "{engine} · {ms} ms",
   "ask.local": "Runs on your device",
+  "gps.retry": "Retry",
+  "gps.demo": "Demo location — this device is outside India.",
+  "trip.multi": "Stop 1 of about {n} — charge to full here, then plan the next stop from this station.",
+  "trip.needMany": "This trip is longer than one charge — it needs more than one charging stop.",
 } as const;
 
 export type Key = keyof typeof en;

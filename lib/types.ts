@@ -114,7 +114,7 @@ export interface Plan { id: string; name: string; price_month: number; priority:
 
 export interface TripStop extends MatchOption {
   leg2_km: number; leg2_min: number; trip_min: number; detour_km: number; detour_min: number;
-  target_soc: number; dest_arrive_soc: number; leg1_path: [number, number][]; leg2_path: [number, number][];
+  target_soc: number; dest_arrive_soc: number; more_stops?: number; leg1_path: [number, number][]; leg2_path: [number, number][];
 }
 
 export interface TripPlan {

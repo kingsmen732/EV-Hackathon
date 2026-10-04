@@ -1,75 +1,38 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { BatteryMedium, Crosshair, LocateFixed, MapPin, Search, Target } from "lucide-react";
-import { api } from "@/lib/api";
+import { BatteryMedium, LocateFixed, Target } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
-import type { GarageVehicle, Station } from "@/lib/types";
+import type { GarageVehicle } from "@/lib/types";
 
 export interface DriveValue { soc: number; target_soc: number; lat: number; lon: number }
 
 const CONN: Record<string, string> = { CCS2: "CCS2", TYPE2: "Type 2", GBT: "Bharat DC-001", BAC001: "Bharat AC-001", LECCS: "LECCS" };
 
 export default function DriverSetup({
-  vehicle, vehicles, onSwitch, stations, pickedLoc, picking, onTogglePick, onSubmit, onCancel, busy, lockTrip, initial, gpsLoc, onLocate,
+  vehicle, vehicles, onSwitch, onSubmit, onCancel, busy, lockTrip, initial, gpsLoc, onLocate, geoStatus, demo,
 }: {
-  vehicle: GarageVehicle; vehicles: GarageVehicle[]; onSwitch: (gid: string) => void; stations: Station[];
-  pickedLoc: { lat: number; lon: number } | null; picking: boolean; onTogglePick: () => void;
+  vehicle: GarageVehicle; vehicles: GarageVehicle[]; onSwitch: (gid: string) => void;
   onSubmit: (v: DriveValue) => void; onCancel?: () => void; busy?: boolean; lockTrip?: boolean;
   initial?: Partial<DriveValue> | null;
   /** Live device location when it is inside the service area. */
-  gpsLoc?: { lat: number; lon: number } | null; onLocate?: () => void;
+  gpsLoc?: { lat: number; lon: number } | null; onLocate?: () => void; geoStatus?: string; demo?: boolean;
 }) {
   const { t } = useI18n();
   const [v, setV] = useState<DriveValue>({
     soc: Math.round(initial?.soc ?? 32), target_soc: initial?.target_soc ?? 80,
     lat: initial?.lat ?? 13.0512, lon: initial?.lon ?? 80.2215,
   });
-  const [q, setQ] = useState("");
-  const [hits, setHits] = useState<{ label: string; lat: number; lon: number }[]>([]);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [placeLabel, setPlaceLabel] = useState<string | null>(initial?.lat ? null : null);
-
-  // start from the phone's real location unless the driver chose a place
-  const [manual, setManual] = useState(!!initial?.lat);
-  const [wantGps, setWantGps] = useState(false);
-  useEffect(() => {
-    if (!gpsLoc || lockTrip || (manual && !wantGps)) return;
-    setV((x) => ({ ...x, lat: gpsLoc.lat, lon: gpsLoc.lon })); setPlaceLabel(t("setup.gps")); setMsg(null);
-    if (wantGps) { setWantGps(false); setManual(false); }
-  }, [gpsLoc?.lat, gpsLoc?.lon, wantGps]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => { if (pickedLoc) setManual(true); }, [pickedLoc]);
-  useEffect(() => { if (pickedLoc) { setV((x) => ({ ...x, ...pickedLoc })); setPlaceLabel(t("setup.pinned")); } }, [pickedLoc]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (q.trim().length < 3) { setHits([]); return; }
-    const h = setTimeout(async () => {
-      try {
-        const r = await api<{ results: { label: string; lat: number; lon: number }[] }>(
-          `/geo/search?q=${encodeURIComponent(q)}&lat=${v.lat}&lon=${v.lon}`);
-        const local = stations.filter((s) => s.kind === "public" && (s.area + " " + s.name).toLowerCase().includes(q.toLowerCase()))
-          .map((s) => ({ label: `${s.area} · ${s.name}`, lat: s.lat + 0.006, lon: s.lon - 0.006 }));
-        setHits([...r.results, ...local].slice(0, 7));
-      } catch { setHits([]); }
-    }, 300);
-    return () => clearTimeout(h);
-  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+  // the start is always the device's live location
+  useEffect(() => { if (gpsLoc && !lockTrip) setV((x) => ({ ...x, lat: gpsLoc.lat, lon: gpsLoc.lon })); }, [gpsLoc?.lat, gpsLoc?.lon, lockTrip]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!gpsLoc) onLocate?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const located = !!gpsLoc;
+  const startMsg = geoStatus === "denied" ? t("setup.denied") : geoStatus === "insecure" ? t("gps.insecure")
+    : geoStatus === "unavailable" ? t("setup.noGps") : geoStatus === "on" ? t("setup.outside") : t("gps.locating");
 
   const p = vehicle.profile;
   const range = (v.soc / 100) * p.usable_kwh / p.kwh_per_km;
   const socTone = v.soc < 15 ? "accent-surge-500" : v.soc < 30 ? "accent-amp-500" : "accent-volt-500";
-
-  function gps() {
-    if (onLocate) { setWantGps(true); onLocate(); if (!gpsLoc) setMsg(t("gps.locating")); return; }
-    if (!navigator.geolocation) return setMsg(t("setup.noGps"));
-    navigator.geolocation.getCurrentPosition((pos) => {
-      const { latitude, longitude } = pos.coords;
-      if (latitude > 12.8 && latitude < 13.25 && longitude > 80.0 && longitude < 80.35) {
-        setV((x) => ({ ...x, lat: latitude, lon: longitude })); setPlaceLabel(t("setup.gps")); setMsg(null);
-      } else setMsg(t("setup.outside"));
-    }, () => setMsg(t("setup.denied")), { timeout: 8000 });
-  }
 
   return (
     <div className="space-y-5">
@@ -107,38 +70,20 @@ export default function DriverSetup({
       {!lockTrip && (
         <div>
           <div className="mb-2 text-sm font-medium">{t("setup.start")}</div>
-          <div className="relative flex gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-ink-700 bg-ink-850 px-3 focus-within:border-volt-500/70">
-              <Search size={16} className="shrink-0 text-slate-500" />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("setup.search")} aria-label={t("setup.search")}
-                className="w-full bg-transparent py-2.5 text-sm outline-none" />
-            </div>
-            <button type="button" className={picking ? "btn-primary !px-3" : "btn-ghost !px-3"} onClick={onTogglePick} title={t("setup.tapMap")} aria-label={t("setup.tapMap")} aria-pressed={picking}><Crosshair size={17} /></button>
-            <button type="button" className="btn-ghost !px-3" onClick={gps} title={t("setup.gps")} aria-label={t("setup.gps")}><LocateFixed size={17} /></button>
-            {hits.length > 0 && (
-              <ul role="listbox" className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-ink-700 bg-ink-900 shadow-2xl">
-                {hits.map((h, i) => (
-                  <li key={i}>
-                    <button type="button" className="flex w-full items-start gap-2 px-3 py-2.5 text-left text-sm hover:bg-ink-800"
-                      onClick={() => { setManual(true); setV({ ...v, lat: h.lat, lon: h.lon }); setPlaceLabel(h.label); setQ(""); setHits([]); }}>
-                      <MapPin size={14} className="mt-0.5 shrink-0 text-slate-500" />{h.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <div className="flex items-center gap-2 rounded-xl border border-ink-700 bg-ink-850 px-3 py-2.5 text-sm">
+            <LocateFixed size={16} className={`shrink-0 ${located ? "text-sky-400" : "text-slate-500"}`} />
+            <span className="min-w-0 flex-1">
+              {located ? t("setup.gps") : geoStatus === "locating" || geoStatus === "idle" ? t("gps.locating") : startMsg}
+            </span>
+            {!located && <button type="button" className="shrink-0 text-xs font-medium text-volt-400 hover:underline" onClick={onLocate}>{t("gps.retry")}</button>}
           </div>
-          <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
-            <MapPin size={12} className="text-sky-400" />
-            <span className="truncate">{picking ? <span className="text-volt-400">{t("setup.tapMap")}</span> : placeLabel ?? t("setup.default")}</span>
-          </div>
-          {msg && <div className="mt-1 text-xs text-amp-400">{msg}</div>}
+          {located && demo && <div className="mt-1 text-xs text-amp-400">{t("gps.demo")}</div>}
         </div>
       )}
 
       <div className="flex gap-2">
         {onCancel && <button className="btn-ghost flex-1" onClick={onCancel}>{t("common.cancel")}</button>}
-        <button className="btn-primary flex-1 !py-3" disabled={busy} onClick={() => onSubmit(v)}>{lockTrip ? t("setup.updateTarget") : t("setup.go")}</button>
+        <button className="btn-primary flex-1 !py-3" disabled={busy || (!lockTrip && !located)} onClick={() => onSubmit(v)}>{lockTrip ? t("setup.updateTarget") : t("setup.go")}</button>
       </div>
     </div>
   );

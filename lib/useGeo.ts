@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export interface GeoFix { lat: number; lon: number; accuracy: number; heading: number | null; speed: number | null; ts: number }
 export type GeoStatus = "idle" | "locating" | "on" | "denied" | "unavailable" | "insecure";
 
-/** Area covered by the charging network (Chennai metro). */
-export const SERVICE_AREA = { minLat: 12.6, maxLat: 13.4, minLon: 79.9, maxLon: 80.5 };
+/** Area covered by the charging network: all of India (the backend grows the network on demand). */
+export const SERVICE_AREA = { minLat: 6.0, maxLat: 37.5, minLon: 68.0, maxLon: 97.5 };
 export const inServiceArea = (lat: number, lon: number) =>
   lat >= SERVICE_AREA.minLat && lat <= SERVICE_AREA.maxLat && lon >= SERVICE_AREA.minLon && lon <= SERVICE_AREA.maxLon;
 
