@@ -2,14 +2,17 @@
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useEffect, useMemo } from "react";
-import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
+import { Circle, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import type { Station } from "@/lib/types";
-import { CENTER, type MapProps, stationHtml, stationTitle } from "@/lib/mapIcons";
+import { CAR_HTML, CENTER, DEST_HTML, GPS_HTML, type MapProps, stationHtml, stationTitle } from "@/lib/mapIcons";
 
 function stationIcon(s: Station, highlighted: boolean, selected: boolean, usable: boolean) {
   const { html, size } = stationHtml(s, highlighted, selected, usable);
   return L.divIcon({ className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2], html });
 }
+
+const html = (h: string, w: number, hh: number, anchor?: [number, number]) =>
+  L.divIcon({ className: "", iconSize: [w, hh], iconAnchor: anchor ?? [w / 2, hh / 2], html: h });
 
 const meIcon = L.divIcon({
   className: "",
@@ -47,9 +50,13 @@ export default function LiveMap(p: MapProps & { theme?: "dark" | "light" }) {
       />
       <Events onPick={p.onPick} picking={p.picking} />
       <Focus focus={p.focus} />
-      {(p.routePath?.length || p.route) && (
-        <Polyline positions={p.routePath?.length ? p.routePath : [p.route!.from, p.route!.to]}
-          pathOptions={{ color: p.route?.color ?? "#4fe6a3", weight: 4, dashArray: p.routePath?.length ? undefined : "8 8", opacity: 0.9 }} />
+      {(p.legs ?? []).filter((l) => l.path.length > 1).map((l, i) => (
+        <Polyline key={i} positions={l.path}
+          pathOptions={{ color: l.color ?? "#1fd084", weight: 4, dashArray: l.dashed ? "8 8" : undefined, opacity: 0.9 }} />
+      ))}
+      {p.gps && p.gps.accuracy > 15 && (
+        <Circle center={[p.gps.lat, p.gps.lon]} radius={Math.min(p.gps.accuracy, 2000)}
+          pathOptions={{ color: "#38bdf8", weight: 1, fillOpacity: 0.12 }} />
       )}
       {p.stations.map((s) => (
         <Marker key={s.id} position={[s.lat, s.lon]} icon={stationIcon(s, hl.has(s.id), p.selected === s.id, !p.compatible || p.compatible.has(s.id))}
@@ -64,7 +71,9 @@ export default function LiveMap(p: MapProps & { theme?: "dark" | "light" }) {
           <Tooltip direction="top" offset={[0, -12]}>{"Mobile charging van"}</Tooltip>
         </Marker>
       ))}
-      {p.me && <Marker position={[p.me.lat, p.me.lon]} icon={meIcon} zIndexOffset={1000} />}
+      {p.dest && <Marker position={[p.dest.lat, p.dest.lon]} icon={html(DEST_HTML, 30, 38, [15, 37])} zIndexOffset={800} />}
+      {p.me && <Marker position={[p.me.lat, p.me.lon]} icon={p.meIsCar ? html(CAR_HTML, 26, 26) : meIcon} zIndexOffset={1000} />}
+      {p.gps && <Marker position={[p.gps.lat, p.gps.lon]} icon={html(GPS_HTML, 20, 20)} zIndexOffset={900} />}
     </MapContainer>
   );
 }

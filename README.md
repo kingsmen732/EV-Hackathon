@@ -115,7 +115,8 @@ npm run dev          # Next.js on :3000 + FastAPI (backend/) on :8000, proxied a
 - Backend tests: `npm test`.
 - Frontend env goes in `.env.local`: `NEXT_PUBLIC_OLA_MAPS_API_KEY`, and optionally `BACKEND_URL`.
 - Backend secrets go in `backend/.env`. It is auto-loaded locally and git-ignored.
-- Without Redis, the backend keeps the simulation, accounts and sessions in memory. Restarting it resets them.
+- Accounts, vehicles and sessions are stored in a SQL database: a SQLite file at `backend/data/chargemesh.db` locally, Postgres on Render. They survive restarts.
+- Without Redis, only the simulation lives in memory. Restarting the backend resets the simulation, not the accounts.
 
 ## Deploy
 
@@ -127,7 +128,8 @@ git push -u origin main
 ```
 In Render, choose **New → Blueprint** and pick that repo. `render.yaml` creates:
 - The FastAPI web service, in the Singapore region, with health check `/api/health`.
-- A private Key Value instance, wired in as `REDIS_URL`.
+- A Postgres database for accounts, wired in as `DATABASE_URL`.
+- A private Key Value instance for the simulation, wired in as `REDIS_URL`.
 - An auto-generated `AUTH_SECRET`.
 
 When prompted, enter `OLA_MAPS_API_KEY`, `OLA_MAPS_CLIENT_ID` and `OLA_MAPS_CLIENT_SECRET`. Note the service URL, for example `https://chargemesh-api.onrender.com`.
@@ -144,7 +146,7 @@ When prompted, enter `OLA_MAPS_API_KEY`, `OLA_MAPS_CLIENT_ID` and `OLA_MAPS_CLIE
 
 **Free-plan caveats:**
 - **Cold starts:** Render's free web service sleeps after about 15 idle minutes, and the first request can take about a minute (the UI keeps polling and recovers). Use Starter for judging day.
-- **Data loss on restart:** free Key Value doesn't persist across restarts. Use a paid plan, or Upstash via `KV_REST_API_URL`/`KV_REST_API_TOKEN`, if accounts must survive.
+- **Database expiry:** Render's free Postgres expires 30 days after creation. Upgrade it or use another Postgres via `DATABASE_URL` to keep accounts.
 
 ## Demo script (3 minutes)
 0. **Sign up**, then add a 2021 Nexon EV. The review step shows about 89% battery health and DC derated to about 43 kW. Also add an **MG Comet** (AC only): the map greys out every station without Type 2, and matches only use AC bays.

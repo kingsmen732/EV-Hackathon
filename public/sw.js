@@ -1,5 +1,5 @@
 /* ChargeMesh service worker: app-shell caching, never caches live /api data. */
-const VERSION = "cm-v3";
+const VERSION = "cm-v4";
 const SHELL = ["/offline.html", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {

@@ -11,12 +11,14 @@ export interface DriveValue { soc: number; target_soc: number; lat: number; lon:
 const CONN: Record<string, string> = { CCS2: "CCS2", TYPE2: "Type 2", GBT: "Bharat DC-001", BAC001: "Bharat AC-001", LECCS: "LECCS" };
 
 export default function DriverSetup({
-  vehicle, vehicles, onSwitch, stations, pickedLoc, picking, onTogglePick, onSubmit, onCancel, busy, lockTrip, initial,
+  vehicle, vehicles, onSwitch, stations, pickedLoc, picking, onTogglePick, onSubmit, onCancel, busy, lockTrip, initial, gpsLoc, onLocate,
 }: {
   vehicle: GarageVehicle; vehicles: GarageVehicle[]; onSwitch: (gid: string) => void; stations: Station[];
   pickedLoc: { lat: number; lon: number } | null; picking: boolean; onTogglePick: () => void;
   onSubmit: (v: DriveValue) => void; onCancel?: () => void; busy?: boolean; lockTrip?: boolean;
   initial?: Partial<DriveValue> | null;
+  /** Live device location when it is inside the service area. */
+  gpsLoc?: { lat: number; lon: number } | null; onLocate?: () => void;
 }) {
   const { t } = useI18n();
   const [v, setV] = useState<DriveValue>({
@@ -28,6 +30,16 @@ export default function DriverSetup({
   const [msg, setMsg] = useState<string | null>(null);
   const [placeLabel, setPlaceLabel] = useState<string | null>(initial?.lat ? null : null);
 
+  // start from the phone's real location unless the driver chose a place
+  const [manual, setManual] = useState(!!initial?.lat);
+  const [wantGps, setWantGps] = useState(false);
+  useEffect(() => {
+    if (!gpsLoc || lockTrip || (manual && !wantGps)) return;
+    setV((x) => ({ ...x, lat: gpsLoc.lat, lon: gpsLoc.lon })); setPlaceLabel(t("setup.gps")); setMsg(null);
+    if (wantGps) { setWantGps(false); setManual(false); }
+  }, [gpsLoc?.lat, gpsLoc?.lon, wantGps]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { if (pickedLoc) setManual(true); }, [pickedLoc]);
   useEffect(() => { if (pickedLoc) { setV((x) => ({ ...x, ...pickedLoc })); setPlaceLabel(t("setup.pinned")); } }, [pickedLoc]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -49,6 +61,7 @@ export default function DriverSetup({
   const socTone = v.soc < 15 ? "accent-surge-500" : v.soc < 30 ? "accent-amp-500" : "accent-volt-500";
 
   function gps() {
+    if (onLocate) { setWantGps(true); onLocate(); if (!gpsLoc) setMsg(t("gps.locating")); return; }
     if (!navigator.geolocation) return setMsg(t("setup.noGps"));
     navigator.geolocation.getCurrentPosition((pos) => {
       const { latitude, longitude } = pos.coords;
@@ -107,7 +120,7 @@ export default function DriverSetup({
                 {hits.map((h, i) => (
                   <li key={i}>
                     <button type="button" className="flex w-full items-start gap-2 px-3 py-2.5 text-left text-sm hover:bg-ink-800"
-                      onClick={() => { setV({ ...v, lat: h.lat, lon: h.lon }); setPlaceLabel(h.label); setQ(""); setHits([]); }}>
+                      onClick={() => { setManual(true); setV({ ...v, lat: h.lat, lon: h.lon }); setPlaceLabel(h.label); setQ(""); setHits([]); }}>
                       <MapPin size={14} className="mt-0.5 shrink-0 text-slate-500" />{h.label}
                     </button>
                   </li>

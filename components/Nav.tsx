@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { BadgeIndianRupee, Car, LogIn, LogOut, Navigation, Zap } from "lucide-react";
+import { BadgeIndianRupee, Car, LogIn, LogOut, Navigation, Zap, Cpu } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import LanguagePicker from "./LanguagePicker";
@@ -24,6 +24,7 @@ export default function Nav() {
     { href: "/", label: t("nav.drive"), icon: Navigation },
     { href: "/garage", label: t("nav.garage"), icon: Car },
     { href: "/plans", label: t("nav.plans"), icon: BadgeIndianRupee },
+    { href: "/ai", label: t("nav.ai"), icon: Cpu },
   ];
   const bare = BARE.includes(path);
   const initials = user?.name.split(" ").map((x) => x[0]).slice(0, 2).join("").toUpperCase();
@@ -78,7 +79,7 @@ export default function Nav() {
       </header>
       {!bare && (
         <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-[1000] border-t border-ink-700 bg-ink-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-          <div className="grid h-16 grid-cols-3">
+          <div className="grid h-16 grid-cols-4">
             {LINKS.map(({ href, label, icon: I }) => {
               const on = href === "/" ? path === "/" : path.startsWith(href);
               return (

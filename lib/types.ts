@@ -111,3 +111,15 @@ export interface User {
 }
 
 export interface Plan { id: string; name: string; price_month: number; priority: number; markup_mult: number; throttle_floor: number; hold_min: number; perks: string[] }
+
+export interface TripStop extends MatchOption {
+  leg2_km: number; leg2_min: number; trip_min: number; detour_km: number; detour_min: number;
+  target_soc: number; dest_arrive_soc: number; leg1_path: [number, number][]; leg2_path: [number, number][];
+}
+
+export interface TripPlan {
+  direct: { km: number; min: number; arrive_soc: number; reachable: boolean; path: [number, number][] };
+  needs_charge: boolean; reserve_soc: number; stops: TripStop[]; range_km: number; priority_pass_price: number;
+  origin: { lat: number; lon: number }; dest: { lat: number; lon: number; label: string | null };
+  routing: "ola-live" | "model";
+}

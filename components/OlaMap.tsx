@@ -1,7 +1,7 @@
 "use client";
 /* Ola Maps (Krutrim) vector map via olamaps-web-sdk (MapLibre GL under the hood). */
 import { useEffect, useRef, useState } from "react";
-import { CENTER, ME_HTML, type MapProps, stationHtml, stationTitle, unitHtml } from "@/lib/mapIcons";
+import { CAR_HTML, CENTER, DEST_HTML, GPS_HTML, ME_HTML, type MapProps, circleRing, stationHtml, stationTitle, unitHtml } from "@/lib/mapIcons";
 
 const KEY = process.env.NEXT_PUBLIC_OLA_MAPS_API_KEY ?? "";
 
@@ -11,7 +11,9 @@ const EMPTY = { type: "FeatureCollection", features: [] };
 /** Rewrite label layers to prefer `name:<lang>` (Ola's regional styles only localise major roads). */
 function localizeLabels(m: any, lang: string) {
   if (!lang || lang === "en") return;
-  const loc = ["coalesce", ["get", `name:${lang}`], ["get", "name"]];
+  const key = `name:${lang}`;
+  // prefer the localized name when present and non-empty, else the default name
+  const loc = ["case", ["all", ["has", key], ["!=", ["to-string", ["get", key]], ""]], ["get", key], ["coalesce", ["get", "name"], ""]];
   const swap = (e: any): any => {
     if (Array.isArray(e)) {
       if (e.length === 2 && e[0] === "get" && e[1] === "name") return loc;
@@ -71,11 +73,17 @@ export default function OlaMap(p: MapProps & { styleUrl: string; lang?: string; 
       const addLayers = () => {
         localizeLabels(m, props.current.lang ?? "en");
         if (!m.getSource("route")) {
+          m.addSource("gps-acc", { type: "geojson", data: EMPTY });
+          m.addLayer({ id: "gps-acc", type: "fill", source: "gps-acc",
+            paint: { "fill-color": "#38bdf8", "fill-opacity": 0.14, "fill-outline-color": "#38bdf8" } });
           m.addSource("route", { type: "geojson", data: EMPTY });
-          m.addLayer({ id: "route-casing", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
+          const lay = { "line-cap": "round", "line-join": "round" };
+          m.addLayer({ id: "route-casing", type: "line", source: "route", layout: lay,
             paint: { "line-color": "#070b10", "line-width": 8, "line-opacity": 0.55 } });
-          m.addLayer({ id: "route", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" },
+          m.addLayer({ id: "route", type: "line", source: "route", layout: lay, filter: ["!=", ["get", "dashed"], true],
             paint: { "line-color": ["coalesce", ["get", "color"], "#1fd084"], "line-width": 4.5 } });
+          m.addLayer({ id: "route-dashed", type: "line", source: "route", layout: lay, filter: ["==", ["get", "dashed"], true],
+            paint: { "line-color": ["coalesce", ["get", "color"], "#1fd084"], "line-width": 4, "line-dasharray": [1.6, 1.6] } });
         }
         setStyleGen((g) => g + 1);
       };
@@ -156,22 +164,43 @@ export default function OlaMap(p: MapProps & { styleUrl: string; lang?: string; 
       const busy = u.status !== "idle";
       put(`u:${u.id}`, u.lat, u.lon, unitHtml(busy), "Mobile charging van", String(busy), undefined, 2);
     }
-    if (p.me) put("me", p.me.lat, p.me.lon, ME_HTML, "You", "me", undefined, 3);
+    if (p.dest) put("dest", p.dest.lat, p.dest.lon, DEST_HTML, p.dest.label || "Destination", "dest", undefined, 2);
+    if (p.me) put("me", p.me.lat, p.me.lon, p.meIsCar ? CAR_HTML : ME_HTML, "Your vehicle", p.meIsCar ? "car" : "me", undefined, 4);
+    if (p.gps) put("gps", p.gps.lat, p.gps.lon, GPS_HTML, "Your location", "gps", undefined, 3);
     marks.current.forEach((mk, id) => { if (!seen.has(id)) { mk.m.remove(); marks.current.delete(id); } });
-  }, [ready, p.stations, p.units, p.me, p.highlight, p.selected, p.compatible]);
+    const dm = marks.current.get("dest");
+    if (dm) dm.m.setOffset?.([0, -17]); // pin tip on the point
+  }, [ready, p.stations, p.units, p.me, p.meIsCar, p.gps, p.dest, p.highlight, p.selected, p.compatible]);
 
-  // route layer (re-applied after style switches)
+  // route legs + GPS accuracy (re-applied after style switches)
   useEffect(() => {
     const m = map.current;
     if (!ready || !m || !m.getSource("route")) return;
-    const coords = p.routePath?.length ? p.routePath : p.route ? [p.route.from, p.route.to] : null;
-    m.getSource("route").setData(coords ? {
+    m.getSource("route").setData({
       type: "FeatureCollection",
-      features: [{ type: "Feature", properties: { color: p.route?.color ?? "#1fd084" },
-        geometry: { type: "LineString", coordinates: coords.map(([a, b]) => [b, a]) } }],
+      features: (p.legs ?? []).filter((l) => l.path.length > 1).map((l) => ({
+        type: "Feature", properties: { color: l.color ?? "#1fd084", dashed: !!l.dashed },
+        geometry: { type: "LineString", coordinates: l.path.map(([a, b]) => [b, a]) },
+      })),
+    });
+    m.getSource("gps-acc")?.setData(p.gps && p.gps.accuracy > 15 ? {
+      type: "FeatureCollection",
+      features: [{ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [circleRing(p.gps.lat, p.gps.lon, Math.min(p.gps.accuracy, 2000))] } }],
     } : EMPTY);
-    m.setPaintProperty("route", "line-dasharray", p.routePath?.length ? [1, 0] : [2, 1.5]);
-  }, [ready, styleGen, p.route, p.routePath]);
+  }, [ready, styleGen, p.legs, p.gps]);
+
+  // fit the whole trip when a new plan arrives
+  const fitKey = (p.legs ?? []).map((l) => `${l.path.length}:${l.path[0]}:${l.path[l.path.length - 1]}`).join("|");
+  useEffect(() => {
+    const m = map.current;
+    const pts = (p.legs ?? []).flatMap((l) => l.path);
+    if (!ready || !m || pts.length < 2 || !p.fit) return;
+    const lats = pts.map((x) => x[0]), lons = pts.map((x) => x[1]);
+    try {
+      m.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+        { padding: { top: 70, bottom: 60, left: 50, right: 50 }, maxZoom: 14.5, duration: 700 });
+    } catch { /* ignore */ }
+  }, [ready, fitKey, p.fit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (ready && p.focus) map.current?.flyTo({ center: [p.focus[1], p.focus[0]], zoom: Math.max(map.current.getZoom(), 13), duration: 700 });
